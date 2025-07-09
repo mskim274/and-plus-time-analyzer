@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { User } from 'firebase/auth';
 import { TimeEntry, Level, FormDiscipline, Activity } from '../types';
 import { SUB_ACTIVITY_MAP, LEVEL_OPTIONS, DISCIPLINE_OPTIONS, ACTIVITY_OPTIONS } from '../constants';
 import PlusIcon from './icons/PlusIcon';
 import ChevronDownIcon from './icons/ChevronDownIcon';
 import PencilIcon from './icons/PencilIcon';
 
-
 interface TimeInputFormProps {
-  onSave: (entry: Omit<TimeEntry, 'id' | 'date'>, id: string | null) => void;
+  user: User;
+  onSave: (entry: Omit<TimeEntry, 'id' | 'date' | 'userId' | 'authorName'>, id: string | null) => void;
   editingEntry: TimeEntry | null;
   onCancelEdit: () => void;
 }
@@ -15,7 +16,7 @@ interface TimeInputFormProps {
 const InputField: React.FC<React.InputHTMLAttributes<HTMLInputElement> & { label: string }> = ({ label, ...props }) => (
     <div>
         <label htmlFor={props.id} className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
-        <input {...props} className="w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm transition-shadow" />
+        <input {...props} className="w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm transition-shadow disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed" />
     </div>
 );
 
@@ -30,8 +31,8 @@ const SelectField: React.FC<React.SelectHTMLAttributes<HTMLSelectElement> & { la
 );
 
 
-const TimeInputForm: React.FC<TimeInputFormProps> = ({ onSave, editingEntry, onCancelEdit }) => {
-  const [name, setName] = useState('');
+const TimeInputForm: React.FC<TimeInputFormProps> = ({ user, onSave, editingEntry, onCancelEdit }) => {
+  const [name, setName] = useState(user.displayName || '');
   const [level, setLevel] = useState<Level>(Level.JUNIOR);
   const [projectName, setProjectName] = useState('');
   const [discipline, setDiscipline] = useState<FormDiscipline>(FormDiscipline.ARCHITECTURE);
@@ -45,7 +46,7 @@ const TimeInputForm: React.FC<TimeInputFormProps> = ({ onSave, editingEntry, onC
   const isEditing = !!editingEntry;
 
   const clearForm = useCallback(() => {
-    setName('');
+    // Keep the name field populated with the logged-in user's name
     setLevel(Level.JUNIOR);
     setProjectName('');
     setDiscipline(FormDiscipline.ARCHITECTURE);
@@ -57,7 +58,7 @@ const TimeInputForm: React.FC<TimeInputFormProps> = ({ onSave, editingEntry, onC
 
   useEffect(() => {
     if (editingEntry) {
-      setName(editingEntry.name);
+      setName(editingEntry.name); // Keep author name consistent on edit
       setLevel(editingEntry.level);
       setProjectName(editingEntry.projectName);
       setDiscipline(editingEntry.discipline);
@@ -67,16 +68,15 @@ const TimeInputForm: React.FC<TimeInputFormProps> = ({ onSave, editingEntry, onC
       setHours(editingEntry.hours);
     } else {
       clearForm();
+      setName(user.displayName || '');
     }
-  }, [editingEntry, clearForm]);
+  }, [editingEntry, clearForm, user.displayName]);
 
 
   useEffect(() => {
     const options = SUB_ACTIVITY_MAP[activity] || [];
     setSubActivityOptions(options);
     if (options.length > 0) {
-      // When activity changes, only reset subActivity if the current one isn't valid
-      // or if not in edit mode
       if (!isEditing || !options.includes(subActivity)) {
          setSubActivity(options[0]);
       }
@@ -103,15 +103,19 @@ const TimeInputForm: React.FC<TimeInputFormProps> = ({ onSave, editingEntry, onC
       role,
       hours: Number(hours),
     }, editingEntry ? editingEntry.id : null);
+    
+    if(!isEditing) {
+        clearForm();
+    }
 
-  }, [name, level, projectName, discipline, activity, subActivity, role, hours, onSave, editingEntry]);
+  }, [name, level, projectName, discipline, activity, subActivity, role, hours, onSave, editingEntry, isEditing, clearForm]);
 
   return (
     <div className="bg-white p-6 md:p-8 rounded-xl shadow-lg mb-8">
         <h2 className="text-2xl font-bold text-gray-800 mb-6">{isEditing ? '기록 수정' : '업무 시간 기록'}</h2>
         <form onSubmit={handleSubmit}>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                <InputField id="name" label="이름" type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="홍길동" required />
+                <InputField id="name" label="이름" type="text" value={name} onChange={() => {}} placeholder="로그인 필요" required readOnly disabled />
                 <SelectField id="level" label="Lv." value={level} onChange={(e) => setLevel(e.target.value as Level)}>
                     {LEVEL_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                 </SelectField>

@@ -1,4 +1,3 @@
-
 export enum Level {
   SPECIAL = "특급",
   SENIOR = "고급",
@@ -30,6 +29,8 @@ export enum Activity {
 
 export interface TimeEntry {
   id: string;
+  userId: string; // Added for data ownership
+  authorName: string; // Added for display
   name: string;
   level: Level;
   projectName: string;

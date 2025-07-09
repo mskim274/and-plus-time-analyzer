@@ -7,9 +7,10 @@ interface TimeLogTableProps {
   entries: TimeEntry[];
   onEdit: (id: string) => void;
   onDelete: (id: string) => void;
+  currentUserId: string;
 }
 
-const TimeLogTable: React.FC<TimeLogTableProps> = ({ entries, onEdit, onDelete }) => {
+const TimeLogTable: React.FC<TimeLogTableProps> = ({ entries, onEdit, onDelete, currentUserId }) => {
     if (entries.length === 0) {
         return (
             <div className="bg-white p-8 rounded-xl shadow-lg text-center text-gray-500">
@@ -40,7 +41,7 @@ const TimeLogTable: React.FC<TimeLogTableProps> = ({ entries, onEdit, onDelete }
                 <tbody className="bg-white divide-y divide-gray-200">
                     {entries.map((entry) => (
                     <tr key={entry.id} className="hover:bg-gray-50 transition-colors duration-200">
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{entry.name}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{entry.authorName}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{entry.level}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 max-w-xs truncate" title={entry.projectName}>{entry.projectName}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{entry.discipline}</td>
@@ -48,24 +49,30 @@ const TimeLogTable: React.FC<TimeLogTableProps> = ({ entries, onEdit, onDelete }
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 max-w-xs truncate" title={entry.subActivity}>{entry.subActivity}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{entry.role}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700 font-semibold text-right">{entry.hours.toFixed(1)}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{entry.date}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium">
-                            <button
-                                type="button"
-                                onClick={() => onEdit(entry.id)}
-                                className="text-indigo-600 hover:text-indigo-900 p-1 rounded-full hover:bg-indigo-100 transition-all"
-                                aria-label={`'${entry.projectName}' 항목 수정`}
-                            >
-                                <PencilIcon className="w-5 h-5" />
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => onDelete(entry.id)}
-                                className="text-red-600 hover:text-red-900 p-1 rounded-full hover:bg-red-100 transition-all ml-2"
-                                aria-label={`'${entry.projectName}' 항목 삭제`}
-                            >
-                                <TrashIcon className="w-5 h-5" />
-                            </button>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{new Date(entry.date).toLocaleDateString('ko-KR')}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium" style={{ minWidth: '100px' }}>
+                          {entry.userId === currentUserId ? (
+                            <>
+                              <button
+                                  type="button"
+                                  onClick={() => onEdit(entry.id)}
+                                  className="text-indigo-600 hover:text-indigo-900 p-1 rounded-full hover:bg-indigo-100 transition-all"
+                                  aria-label={`'${entry.projectName}' 항목 수정`}
+                              >
+                                  <PencilIcon className="w-5 h-5" />
+                              </button>
+                              <button
+                                  type="button"
+                                  onClick={() => onDelete(entry.id)}
+                                  className="text-red-600 hover:text-red-900 p-1 rounded-full hover:bg-red-100 transition-all ml-2"
+                                  aria-label={`'${entry.projectName}' 항목 삭제`}
+                              >
+                                  <TrashIcon className="w-5 h-5" />
+                              </button>
+                            </>
+                          ) : (
+                            <span className="text-xs text-gray-400">읽기전용</span>
+                          )}
                         </td>
                     </tr>
                     ))}

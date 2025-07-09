@@ -1,78 +1,54 @@
-
 import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
-import { TimeEntry, Discipline, FormDiscipline, Level, Activity } from './types';
+import { collection, query, onSnapshot, addDoc, updateDoc, deleteDoc, doc, orderBy, where } from 'firebase/firestore';
+import { db } from './firebase';
+import { useAuth } from './hooks/useAuth';
+import { TimeEntry, Discipline, FormDiscipline } from './types';
 import TimeInputForm from './components/TimeInputForm';
 import TimeLogTable from './components/TimeLogTable';
 import FilterBar from './components/FilterBar';
 import Dashboard from './components/Dashboard';
 import Tabs from './components/Tabs';
+import Spinner from './components/Spinner';
+import Login from './components/Login';
+import Header from './components/Header';
 
 type ActiveTab = '대시보드' | '업무시간 기록';
 
 const App: React.FC = () => {
-    const [timeEntries, setTimeEntries] = useState<TimeEntry[]>(() => {
-        try {
-            const savedEntries = localStorage.getItem('timeEntries');
-            if (savedEntries) {
-                return JSON.parse(savedEntries);
-            }
-        } catch (e) {
-            console.error("Could not load time entries from local storage", e);
-        }
-        return [
-            {
-                id: 'demo1',
-                name: '김철수',
-                level: Level.SENIOR,
-                projectName: '판교 데이터센터',
-                discipline: FormDiscipline.ARCHITECTURE,
-                activity: Activity.MODELING,
-                subActivity: '2-01. Modeling 작업',
-                role: 'BIM 모델러',
-                hours: 8,
-                date: new Date().toLocaleDateString('ko-KR')
-            },
-            {
-                id: 'demo2',
-                name: '이영희',
-                level: Level.MID,
-                projectName: '부산 스마트시티',
-                discipline: FormDiscipline.MEP,
-                activity: Activity.REVIEW_ANALYSIS,
-                subActivity: '1-01. 도면 검토/분석',
-                role: '설비 엔지니어',
-                hours: 6.5,
-                date: new Date(Date.now() - 86400000).toLocaleDateString('ko-KR')
-            },
-            {
-                id: 'demo3',
-                name: '박진우',
-                level: Level.JUNIOR,
-                projectName: '판교 데이터센터',
-                discipline: FormDiscipline.ELECTRICAL,
-                activity: Activity.BCMS,
-                subActivity: '3-01. 속성 표준화',
-                role: '전기 모델러',
-                hours: 7,
-                date: new Date(Date.now() - 86400000).toLocaleDateString('ko-KR')
-            }
-        ];
-    });
-    
+    const { user, loading: authLoading } = useAuth();
+    const [timeEntries, setTimeEntries] = useState<TimeEntry[]>([]);
+    const [loadingData, setLoadingData] = useState(true);
     const [activeTab, setActiveTab] = useState<ActiveTab>('대시보드');
     const TABS: ActiveTab[] = ['대시보드', '업무시간 기록'];
 
     useEffect(() => {
-        try {
-            localStorage.setItem('timeEntries', JSON.stringify(timeEntries));
-        } catch (e) {
-            console.error("Could not save time entries to local storage", e);
+        if (!user) {
+            setTimeEntries([]);
+            setLoadingData(false);
+            return;
         }
-    }, [timeEntries]);
+
+        setLoadingData(true);
+        const timeEntriesCollectionRef = collection(db, "time-entries");
+        const q = query(timeEntriesCollectionRef, where("userId", "==", user.uid), orderBy("date", "desc"));
+        
+        const unsubscribe = onSnapshot(q, (querySnapshot) => {
+            const entriesData = querySnapshot.docs.map(doc => ({
+                ...doc.data() as Omit<TimeEntry, 'id'>,
+                id: doc.id,
+            }));
+            setTimeEntries(entriesData);
+            setLoadingData(false);
+        }, (error) => {
+            console.error("Error fetching time entries: ", error);
+            setLoadingData(false);
+        });
+
+        return () => unsubscribe();
+    }, [user]);
 
     const [filter, setFilter] = useState<Discipline>(Discipline.ALL);
     const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
-
     const formRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -85,30 +61,44 @@ const App: React.FC = () => {
         if (!editingEntryId) return null;
         return timeEntries.find(entry => entry.id === editingEntryId) || null;
     }, [timeEntries, editingEntryId]);
-    
-    const handleSaveEntry = useCallback((entryData: Omit<TimeEntry, 'id' | 'date'>, id: string | null) => {
-        if (id) {
-            setTimeEntries(prevEntries =>
-                prevEntries.map(entry =>
-                    entry.id === id ? { ...entry, ...entryData, date: new Date().toLocaleDateString('ko-KR') } : entry
-                )
-            );
-        } else {
-            const newEntry: TimeEntry = {
-                ...entryData,
-                id: new Date().toISOString() + Math.random(),
-                date: new Date().toLocaleDateString('ko-KR'),
-            };
-            setTimeEntries(prevEntries => [newEntry, ...prevEntries]);
-        }
-        setEditingEntryId(null);
-    }, []);
 
-    const handleDeleteEntry = useCallback((id: string) => {
+    const handleSaveEntry = useCallback(async (entryData: Omit<TimeEntry, 'id' | 'date' | 'userId' | 'authorName'>, id: string | null) => {
+        if (!user) return;
+        
+        try {
+            const dataToSave = {
+                ...entryData,
+                userId: user.uid,
+                authorName: user.displayName || 'Unknown User',
+                date: new Date().toISOString(),
+            };
+
+            if (id) {
+                const entryDoc = doc(db, "time-entries", id);
+                await updateDoc(entryDoc, dataToSave);
+            } else {
+                const timeEntriesCollectionRef = collection(db, "time-entries");
+                await addDoc(timeEntriesCollectionRef, dataToSave);
+            }
+        } catch(e) {
+            console.error("Error saving entry: ", e);
+            alert("데이터 저장 중 오류가 발생했습니다.");
+        }
+        
+        setEditingEntryId(null);
+    }, [user]);
+
+    const handleDeleteEntry = useCallback(async (id: string) => {
         if (window.confirm('이 기록을 정말로 삭제하시겠습니까?')) {
-            setTimeEntries(prevEntries => prevEntries.filter(entry => entry.id !== id));
-            if (id === editingEntryId) {
-                setEditingEntryId(null);
+            try {
+                const entryDoc = doc(db, "time-entries", id);
+                await deleteDoc(entryDoc);
+                if (id === editingEntryId) {
+                    setEditingEntryId(null);
+                }
+            } catch(e) {
+                console.error("Error deleting entry: ", e);
+                alert("데이터 삭제 중 오류가 발생했습니다. 본인이 작성한 기록만 삭제할 수 있습니다.");
             }
         }
     }, [editingEntryId]);
@@ -122,46 +112,61 @@ const App: React.FC = () => {
         setEditingEntryId(null);
     }, []);
 
-
     const filteredEntries = useMemo(() => {
         if (filter === Discipline.ALL) {
-            return timeEntries;  
+            return timeEntries;
         }
         return timeEntries.filter(entry => entry.discipline === (filter as unknown as FormDiscipline));
     }, [timeEntries, filter]);
 
+    if (authLoading) {
+        return <div className="flex justify-center items-center h-screen bg-slate-100"><Spinner /></div>;
+    }
+
+    if (!user) {
+        return <Login />;
+    }
+
+    const renderContent = () => {
+        if (loadingData) {
+            return <div className="flex justify-center items-center h-64"><Spinner /></div>;
+        }
+        
+        if (activeTab === '대시보드') {
+            return <Dashboard entries={timeEntries} />;
+        }
+        
+        if (activeTab === '업무시간 기록') {
+            return (
+                <>
+                   <div ref={formRef}>
+                       <TimeInputForm
+                           user={user}
+                           onSave={handleSaveEntry}
+                           editingEntry={editingEntry}
+                           onCancelEdit={handleCancelEdit}
+                       />
+                    </div>
+                    <FilterBar selectedFilter={filter} onFilterChange={setFilter} />
+                    <TimeLogTable 
+                        entries={filteredEntries} 
+                        onEdit={handleStartEdit}
+                        onDelete={handleDeleteEntry}
+                        currentUserId={user.uid}
+                    />
+                </>
+            );
+        }
+        return null;
+    }
 
     return (
         <div className="bg-slate-100 min-h-screen font-sans">
-            <header className="bg-white shadow-sm sticky top-0 z-10">
-                <div className="max-w-screen-xl mx-auto py-5 px-4 sm:px-6 lg:px-8">
-                    <h1 className="text-3xl font-bold tracking-tight text-gray-900">AnD.PLUS 업무 투입시간 분석</h1>
-                    <p className="mt-1 text-md text-gray-600">프로젝트별 투입 시간을 효율적으로 관리하고 분석하세요.</p>
-                </div>
-            </header>
+            <Header user={user} />
             <main>
                 <div className="max-w-screen-xl mx-auto py-8 sm:px-6 lg:px-8">
                     <Tabs tabs={TABS} activeTab={activeTab} onTabChange={setActiveTab} />
-                    
-                    {activeTab === '대시보드' && <Dashboard entries={timeEntries} />}
-
-                    {activeTab === '업무시간 기록' && (
-                        <>
-                           <div ref={formRef}>
-                               <TimeInputForm
-                                   onSave={handleSaveEntry}
-                                   editingEntry={editingEntry}
-                                   onCancelEdit={handleCancelEdit}
-                               />
-                            </div>
-                            <FilterBar selectedFilter={filter} onFilterChange={setFilter} />
-                            <TimeLogTable 
-                                entries={filteredEntries} 
-                                onEdit={handleStartEdit}
-                                onDelete={handleDeleteEntry}
-                            />
-                        </>
-                    )}
+                    {renderContent()}
                 </div>
             </main>
             <footer className="py-6">
