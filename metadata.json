@@ -1,0 +1,6 @@
+{
+  "name": "AnD.PLUS 업무 투입시간 분석",
+  "description": "An application to log and analyze time spent on various project activities. Users can input their work details, which are then organized and displayed for analysis.",
+  "requestFramePermissions": [],
+  "prompt": ""
+}
